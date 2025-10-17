@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="ko">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>{{ scenario_title }}</title>
+	<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧩</text></svg>">
+	<style>
+		body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; }
+		.container { max-width: 800px; margin: 0 auto; }
+		.box { border: 1px solid #ddd; padding: 16px; border-radius: 8px; }
+		.row { display: flex; gap: 8px; }
+		input[type="text"] { flex: 1; padding: 10px; }
+		button { padding: 10px 14px; cursor: pointer; }
+		.badge { background: #efefef; border-radius: 12px; padding: 4px 10px; }
+		.log { max-height: 300px; overflow: auto; border: 1px solid #eee; padding: 8px; }
+		.log .item { padding: 6px 4px; border-bottom: 1px solid #f0f0f0; }
+	</style>
+</head>
+<body>
+	<div class="container">
+		<div style="display:flex; align-items:center; gap:12px;">
+			<h1 style="margin:0;">{{ scenario.title }}</h1>
+		</div>
+		<p style="color:#666; margin-top:-8px;">현재 포트: <span id="port"></span></p>
+		<div class="box" style="white-space: pre-wrap; line-height: 1.5; font-size: 16px; background: #f8f9fa; border: 2px solid #e9ecef;">
+			<strong>알몸의 남자가 사막 한 가운데에서 죽어있었다. 그의 손에는 부러진 성냥이 들려있었다. 왜 그는 사막 한 가운데에서 죽어있었을까?</strong>
+		</div>
+		<p>남은 토큰: <span id="tokens" class="badge">20</span> · 남은 힌트: <span id="hints" class="badge">3</span></p>
+		<div class="box" style="margin-top: 12px;">
+			<div class="row">
+				<input id="question" type="text" placeholder="질문을 입력하세요 (예/아니오/무관으로 답변)" />
+				<button id="askBtn">질문</button>
+				<button id="hintBtn" title="힌트 요청">힌트</button>
+			</div>
+			<div class="row" style="margin-top: 8px;">
+				<input id="guess" type="text" placeholder="정답을 입력하세요" />
+				<button id="guessBtn">정답 제출</button>
+				<button id="revealBtn" title="정답 공개">정답 공개</button>
+				<button id="resetBtn" title="게임 재시작">재시작</button>
+			</div>
+		</div>
+		<div style="margin-top: 16px;">
+			<h3>대화 로그</h3>
+			<div id="log" class="log"></div>
+			<div id="result" style="margin-top: 8px;"></div>
+			
+			<!-- 질문 분류 피드백 섹션 -->
+			<div id="feedbackSection" style="margin-top: 16px; display: none;">
+				<h4>이 질문의 올바른 분류는?</h4>
+				<p style="color: #666; font-size: 14px; margin-bottom: 12px;">챗봇 답변에 관계없이, 이 질문이 어떤 분류에 속해야 하는지 선택해주세요.</p>
+				<div style="display: flex; gap: 8px; margin-bottom: 8px;">
+					<button id="feedbackYes" class="feedback-btn" data-type="yes">✅ 예 (이 질문은 '예'로 답해야 함)</button>
+					<button id="feedbackNo" class="feedback-btn" data-type="no">❌ 아니오 (이 질문은 '아니오'로 답해야 함)</button>
+					<button id="feedbackAmbiguous" class="feedback-btn" data-type="ambiguous">❓ 애매함 (이 질문은 '애매함'으로 답해야 함)</button>
+				</div>
+				<div id="feedbackComment" style="display: none;">
+					<textarea id="commentText" placeholder="추가 설명이나 이유를 입력하세요 (선택사항)" style="width: 100%; height: 60px; margin-top: 8px;"></textarea>
+					<button id="submitFeedback" style="margin-top: 8px;">분류 피드백 제출</button>
+				</div>
+			</div>
+			
+			<!-- 정답 피드백 섹션 -->
+			<div id="answerFeedbackSection" style="margin-top: 16px; display: none;">
+				<h4>이 정답이 올바른가요?</h4>
+				<p style="color: #666; font-size: 14px; margin-bottom: 12px;">시스템이 정답으로 판단한 답변이 실제로 올바른지 피드백해주세요.</p>
+				<div style="display: flex; gap: 8px; margin-bottom: 8px;">
+					<button id="answerFeedbackCorrect" class="answer-feedback-btn" data-type="correct">✅ 맞습니다 (이 답변이 정답입니다)</button>
+					<button id="answerFeedbackIncorrect" class="answer-feedback-btn" data-type="incorrect">❌ 틀렸습니다 (이 답변이 오답입니다)</button>
+				</div>
+				<div id="answerFeedbackComment" style="display: none;">
+					<textarea id="answerCommentText" placeholder="왜 맞거나 틀렸는지 이유를 입력하세요 (선택사항)" style="width: 100%; height: 60px; margin-top: 8px;"></textarea>
+					<button id="submitAnswerFeedback" style="margin-top: 8px;">정답 피드백 제출</button>
+				</div>
+			</div>
+		</div>
+		
+		<!-- 밝혀진 사실 로그 -->
+		<div id="factsSection" style="margin-top: 16px; display: none;">
+			<h3>밝혀진 사실</h3>
+			<div id="facts" class="log" style="background: #f8f9fa; border: 1px solid #e9ecef;"></div>
+		</div>
+
+		<!-- 간단 모달 -->
+		<div id="hintModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.35); align-items:center; justify-content:center;">
+			<div style="background:#fff; padding:16px; border-radius:8px; max-width:420px; width:90%;">
+				<h3>힌트</h3>
+				<p id="hintText" style="white-space:pre-wrap"></p>
+				<div style="text-align:right; margin-top:8px;">
+					<button id="hintClose">닫기</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<script>
+		const logEl = document.getElementById('log');
+		const tokensEl = document.getElementById('tokens');
+		const resultEl = document.getElementById('result');
+		document.getElementById('port').textContent = window.location.port || '80';
+		// 현재 질문/답변을 전역에 보관하여 피드백에 포함
+		let currentQuestion = '';
+		let currentAnswer = '';
+
+		async function refreshState() {
+			const res = await fetch('/state');
+			const data = await res.json();
+			document.getElementById('hints').textContent = data.hintsLeft ?? 0;
+		}
+		refreshState();
+
+		function appendLog(q, a) {
+			const div = document.createElement('div');
+			div.className = 'item';
+			let text;
+			if (typeof a === 'object') {
+				text = `Q: ${q}  →  A: ${a.result}`;
+				if (a.evidence) text += ` (${a.evidence})`;
+			} else {
+				text = `Q: ${q}  →  A: ${a}`;
+			}
+			div.textContent = text;
+			logEl.prepend(div);
+		}
+
+		document.getElementById('askBtn').addEventListener('click', async () => {
+			const question = document.getElementById('question').value.trim();
+			if (!question) return;
+			const res = await fetch('/ask', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question }) });
+			const data = await res.json();
+			if (data.error) { resultEl.textContent = data.error; return; }
+			tokensEl.textContent = data.tokensLeft;
+			if (data.result === 'non_binary') {
+				resultEl.textContent = data.message || '예/아니오로 답할 수 있는 질문만 가능합니다.';
+				if (Array.isArray(data.suggestions) && data.suggestions.length) {
+					const s = document.createElement('div');
+					s.style.marginTop = '6px';
+					s.textContent = '예시: ' + data.suggestions.join(' / ');
+					resultEl.appendChild(s);
+				}
+			} else {
+				// 모든 답변을 로그에 표시
+				let answerText = data.answerText || (data.result === 'yes' ? '예' : data.result === 'no' ? '아니오' : data.result === 'irrelevant' ? '무관' : data.result);
+				
+				// 답변을 currentAnswer에 저장
+				currentAnswer = answerText;
+				// 질문도 저장하여 피드백에 포함
+				currentQuestion = question;
+				
+				// non_binary인 경우 메시지도 함께 표시
+				if (data.result === 'non_binary' && data.message) {
+					answerText += ` (${data.message})`;
+				}
+				
+				appendLog(question, answerText);
+				
+				// 답변 후 피드백 섹션 표시
+				setTimeout(() => {
+					const feedbackSection = document.getElementById('feedbackSection');
+					feedbackSection.style.display = 'block';
+				}, 500);
+				
+				// 밝혀진 사실 업데이트
+				if (data.discovered_facts && data.discovered_facts.length > 0) {
+					updateDiscoveredFacts(data.discovered_facts);
+				}
+			}
+			document.getElementById('question').value = '';
+		});
+
+		document.getElementById('guessBtn').addEventListener('click', async () => {
+			const guess = document.getElementById('guess').value.trim();
+			if (!guess) return;
+			const res = await fetch('/guess', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ guess }) });
+			const data = await res.json();
+			if (data.error) { resultEl.textContent = data.error; return; }
+			
+			// 정답 피드백을 위한 데이터 저장
+			currentAnswer = guess;
+			document.getElementById('answerFeedbackSection').style.display = 'block';
+			
+			if (data.correct) {
+				resultEl.textContent = `정답입니다! 🎉\n\n점수: ${data.score}점`;
+			} else {
+				resultEl.textContent = `오답입니다.\n점수: ${data.score}점`;
+			}
+		});
+		document.getElementById('revealBtn').addEventListener('click', async () => {
+			const res = await fetch('/reveal');
+			const data = await res.json();
+			alert(`${data.explanation}\n\n정답: ${data.answer}`);
+		});
+
+			document.getElementById('resetBtn').addEventListener('click', () => {
+			location.reload();
+		});
+
+		document.getElementById('hintBtn').addEventListener('click', async () => {
+			// 간단한 힌트 표시
+			const hints = [
+				"남자는 열기구를 타고 여행 중이었습니다.",
+				"열기구에 문제가 생겨 하강하고 있었습니다.",
+				"짐과 옷을 모두 버렸지만 여전히 하강했습니다.",
+				"마지막으로 성냥으로 제비뽑기를 했습니다.",
+				"남자가 부러진 성냥을 뽑아 희생했습니다.",
+				"남자는 열기구에서 뛰어내려 사망했습니다."
+			];
+			const randomHint = hints[Math.floor(Math.random() * hints.length)];
+			document.getElementById('hintText').textContent = randomHint;
+			document.getElementById('hintModal').style.display = 'flex';
+		});
+
+		document.getElementById('hintClose').addEventListener('click', () => {
+			document.getElementById('hintModal').style.display = 'none';
+		});
+		
+		// 밝혀진 사실 업데이트 함수
+		function updateDiscoveredFacts(facts) {
+			const factsSection = document.getElementById('factsSection');
+			const factsDiv = document.getElementById('facts');
+			
+			if (facts && facts.length > 0) {
+				factsSection.style.display = 'block';
+				factsDiv.innerHTML = facts.map(fact => 
+					`<div class="item" style="color: #28a745; font-weight: 500;">✓ ${fact}</div>`
+				).join('');
+			}
+		}
+
+		// 질문 분류 피드백 기능
+		// 피드백 버튼 클릭
+		document.querySelectorAll('.feedback-btn').forEach(btn => {
+			btn.addEventListener('click', () => {
+				const correctClassification = btn.dataset.type; // yes, no, ambiguous
+				const feedbackComment = document.getElementById('feedbackComment');
+				const commentText = document.getElementById('commentText');
+				
+				// 모든 분류에 대해 댓글 입력 가능
+				feedbackComment.style.display = 'block';
+				commentText.focus();
+				
+				// 선택된 버튼 표시
+				document.querySelectorAll('.feedback-btn').forEach(b => b.style.backgroundColor = '');
+				btn.style.backgroundColor = '#e3f2fd';
+			});
+		});
+
+		// 피드백 제출
+		document.getElementById('submitFeedback').addEventListener('click', () => {
+			const selectedBtn = document.querySelector('.feedback-btn[style*="background-color: rgb(227, 242, 253)"]');
+			if (!selectedBtn) {
+				alert('먼저 분류를 선택해주세요.');
+				return;
+			}
+			
+			const correctClassification = selectedBtn.dataset.type;
+			const comment = document.getElementById('commentText').value.trim();
+			submitClassificationFeedback(correctClassification, comment);
+		});
+
+		// 질문 분류 피드백 제출 함수
+		async function submitClassificationFeedback(correctClassification, comment) {
+			try {
+				const response = await fetch('/feedback', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						question: currentQuestion,
+						chatbot_answer: currentAnswer,
+						correct_classification: correctClassification,
+						comment: comment
+					})
+				});
+				
+				const data = await response.json();
+				
+				if (data.status === 'success') {
+					alert(`질문이 '${getClassificationText(correctClassification)}' 분류로 학습되었습니다!`);
+					// 피드백 섹션 숨기기
+					document.getElementById('feedbackSection').style.display = 'none';
+					document.getElementById('feedbackComment').style.display = 'none';
+					document.getElementById('commentText').value = '';
+					// 버튼 스타일 초기화
+					document.querySelectorAll('.feedback-btn').forEach(b => b.style.backgroundColor = '');
+				} else {
+					alert('피드백 저장 실패: ' + data.message);
+				}
+			} catch (error) {
+				alert('피드백 전송 실패: ' + error.message);
+			}
+		}
+
+		// 분류 텍스트 변환 함수
+		function getClassificationText(classification) {
+			const map = {
+				'yes': '예',
+				'no': '아니오',
+				'ambiguous': '애매함'
+			};
+			return map[classification] || classification;
+		}
+
+		// 정답 피드백 기능
+		// 정답 피드백 버튼 클릭
+		document.querySelectorAll('.answer-feedback-btn').forEach(btn => {
+			btn.addEventListener('click', () => {
+				const userFeedback = btn.dataset.type; // correct, incorrect
+				const answerFeedbackComment = document.getElementById('answerFeedbackComment');
+				const answerCommentText = document.getElementById('answerCommentText');
+				
+				// 댓글 입력 표시
+				answerFeedbackComment.style.display = 'block';
+				answerCommentText.focus();
+				
+				// 선택된 버튼 표시
+				document.querySelectorAll('.answer-feedback-btn').forEach(b => b.style.backgroundColor = '');
+				btn.style.backgroundColor = '#e3f2fd';
+			});
+		});
+
+		// 정답 피드백 제출
+		document.getElementById('submitAnswerFeedback').addEventListener('click', () => {
+			const selectedBtn = document.querySelector('.answer-feedback-btn[style*="background-color: rgb(227, 242, 253)"]');
+			if (!selectedBtn) {
+				alert('먼저 피드백을 선택해주세요.');
+				return;
+			}
+			
+			const userFeedback = selectedBtn.dataset.type;
+			const comment = document.getElementById('answerCommentText').value.trim();
+			submitAnswerFeedback(userFeedback, comment);
+		});
+
+		// 정답 피드백 제출 함수
+		function submitAnswerFeedback(userFeedback, comment) {
+			if (!currentAnswer) {
+				alert('정답이 없습니다.');
+				return;
+			}
+			
+			fetch('/answer_feedback', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify({
+					answer_text: currentAnswer,
+					user_feedback: userFeedback,
+					comment: comment
+				})
+			})
+			.then(response => response.json())
+			.then(data => {
+				if (data.status === 'success') {
+					alert('정답 피드백이 저장되었습니다.');
+					// 피드백 섹션 숨기기
+					document.getElementById('answerFeedbackSection').style.display = 'none';
+					// 입력 필드 초기화
+					document.getElementById('answerCommentText').value = '';
+					document.querySelectorAll('.answer-feedback-btn').forEach(b => b.style.backgroundColor = '');
+				} else {
+					alert('피드백 저장 실패: ' + data.message);
+				}
+			})
+			.catch(error => {
+				console.error('Error:', error);
+				alert('피드백 저장 중 오류가 발생했습니다.');
+			});
+		}
+	</script>
+</body>
+</html>
+
+
