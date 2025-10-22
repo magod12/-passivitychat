@@ -101,13 +101,16 @@
 		// 현재 질문/답변을 전역에 보관하여 피드백에 포함
 		let currentQuestion = '';
 		let currentAnswer = '';
+		
+		// 초기 상태 로드
+		refreshState();
 
 		async function refreshState() {
 			const res = await fetch('/state');
 			const data = await res.json();
-			document.getElementById('hints').textContent = data.hintsLeft ?? 0;
+			document.getElementById('hints').textContent = data.hints_left ?? 0;
+			document.getElementById('tokens').textContent = data.tokens_left ?? 20;
 		}
-		refreshState();
 
 		function appendLog(q, a) {
 			const div = document.createElement('div');
@@ -191,23 +194,68 @@
 			alert(`${data.explanation}\n\n정답: ${data.answer}`);
 		});
 
-			document.getElementById('resetBtn').addEventListener('click', () => {
-			location.reload();
+			document.getElementById('resetBtn').addEventListener('click', async () => {
+			try {
+				const response = await fetch('/reset', {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+					}
+				});
+				
+				const data = await response.json();
+				
+				if (response.ok) {
+					// 상태 업데이트
+					document.getElementById('tokens').textContent = data.tokens_left;
+					document.getElementById('hints').textContent = data.hints_left;
+					
+					// 힌트 버튼 활성화
+					document.getElementById('hintBtn').disabled = false;
+					document.getElementById('hintBtn').textContent = '힌트';
+					
+					// 대화 로그 초기화
+					document.getElementById('log').innerHTML = '';
+					
+					alert(data.message);
+				} else {
+					alert('게임 초기화에 실패했습니다.');
+				}
+			} catch (error) {
+				console.error('리셋 요청 실패:', error);
+				alert('게임 초기화에 실패했습니다.');
+			}
 		});
 
 		document.getElementById('hintBtn').addEventListener('click', async () => {
-			// 간단한 힌트 표시
-			const hints = [
-				"남자는 열기구를 타고 여행 중이었습니다.",
-				"열기구에 문제가 생겨 하강하고 있었습니다.",
-				"짐과 옷을 모두 버렸지만 여전히 하강했습니다.",
-				"마지막으로 성냥으로 제비뽑기를 했습니다.",
-				"남자가 부러진 성냥을 뽑아 희생했습니다.",
-				"남자는 열기구에서 뛰어내려 사망했습니다."
-			];
-			const randomHint = hints[Math.floor(Math.random() * hints.length)];
-			document.getElementById('hintText').textContent = randomHint;
-			document.getElementById('hintModal').style.display = 'flex';
+			try {
+				const response = await fetch('/hint', {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+					}
+				});
+				
+				const data = await response.json();
+				
+				if (response.ok) {
+					document.getElementById('hintText').textContent = data.hint;
+					document.getElementById('hintModal').style.display = 'flex';
+					// 힌트 수만 업데이트 (토큰은 그대로 유지)
+					document.getElementById('hints').textContent = data.hints_left;
+					
+					// 힌트가 모두 소진되었으면 버튼 비활성화
+					if (data.hints_left <= 0) {
+						document.getElementById('hintBtn').disabled = true;
+						document.getElementById('hintBtn').textContent = '힌트 없음';
+					}
+				} else {
+					alert(data.error || '힌트를 가져올 수 없습니다.');
+				}
+			} catch (error) {
+				console.error('힌트 요청 실패:', error);
+				alert('힌트를 가져올 수 없습니다.');
+			}
 		});
 
 		document.getElementById('hintClose').addEventListener('click', () => {
